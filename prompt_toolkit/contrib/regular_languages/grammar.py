@@ -19,16 +19,19 @@ class StateMachine(object):
         #self.autocompleter = None
         #self.placeholder = None
 
-    def get_accepting_states(self):
-        result = []
+    #def get_accepting_states(self):
+    #    result = []
 
-        for char, state in self.transitions:
-            result.extend(state.get_accepting_states())
+    #    for char, state in self.transitions:
+    #        result.extend(state.get_accepting_states())
 
-        if self.accept:
-            result.append(self)
+    #    if self.accept:
+    #        result.append(self)
 
-        return result
+    #    return result
+
+    def __repr__(self):
+        return 'StateMachine(transitions=%r, accept=%r)' % (self.transitions, self.accept)
 
     @classmethod
     def from_character(cls, character):
@@ -40,6 +43,9 @@ class StateMachine(object):
         return cls(transitions=[(character, s)], accept=False)
 
     def __add__(self, other):
+        """
+        :param other: :class:`StateMachine`
+        """
         # Create a new state machine for which other is appended to the
         # 'Accepting' states of the machine that we currently have.
         # `accept` becomes false for the machine that we have.
@@ -57,21 +63,27 @@ class StateMachine(object):
         """
         Merge State machines.
         """
+        # We create one accepting state, to make sure the graph does not get
+        # unnessary large when apending other subgraphs.
+        end_state = StateMachine(accept=True)
+
         return StateMachine(transitions=[
-            (None, self),
-            (None, other)
-        ])
+            (None, self + end_state),
+            (None, other + end_state)
+        ], accept=False)
 
     def match(self, inputstring):
+        # Follow 'None' transitions.
+        for char, state in self.transitions:
+            if char is None:
+                for m in state.match(inputstring):
+                    yield m
+
         if inputstring:
             first_char, rest = inputstring[0], inputstring[1:]
 
             for char, state in self.transitions:
-                if char is None:
-                    for m in state.match(inputstring):
-                        yield m
-
-                elif first_char in char.characters:
+                if char is not None and first_char in char.characters:
                     # It's non deterministic. So several paths could lead to
                     # matches.
                     for m in state.match(rest):
@@ -113,6 +125,9 @@ class Repeat(StateMachine):
     def copy(self):
         pass
 
+    @classmethod
+    def create(cls, sub_state_machine):
+        pass
 
 class Label(object):
     """
@@ -151,3 +166,17 @@ class Character(object):
 
     def __invert__(self):
         return Character(self.characters, inverted=not self.inverted)
+
+    def __repr__(self):
+        return 'Character(%r, inverted=%r)' % (self.characters, self.inverted)
+
+
+
+# -----------------
+
+
+space_characters = Character(characters=' \t')
+non_space_characters = ~ Character(characters=' \t')
+
+
+

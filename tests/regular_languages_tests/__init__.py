@@ -33,7 +33,36 @@ class CharacterTest(unittest.TestCase):
 
 class RegularLanguagesTest(unittest.TestCase):
     def setUp(self):
-        pass
+        self.c = Character('x')
+        self.m = StateMachine.from_character(self.c)
 
     def test_initial(self):
-        pass
+        self.assertEqual(list(self.m.match('x')), ['MATCH'])
+        self.assertEqual(list(self.m.match('y')), [])
+
+    def test_concatenation(self):
+        m1 = StateMachine.from_character(Character('x'))
+        m2 = StateMachine.from_character(Character('y'))
+        m = m1 + m2
+
+        self.assertEqual(list(m.match('x')), [])
+        self.assertEqual(list(m.match('y')), [])
+        self.assertEqual(list(m.match('xy')), ['MATCH'])
+        self.assertEqual(list(m.match('')), [])
+
+    def test_union(self):
+        m1 = StateMachine.from_character(Character('x'))
+        m2 = StateMachine.from_character(Character('y'))
+        m = m1 | m2
+
+        self.assertEqual(list(m.match('x')), ['MATCH'])
+        self.assertEqual(list(m.match('y')), ['MATCH'])
+        self.assertEqual(list(m.match('xy')), [])
+
+    def test_complete(self):
+        m1 = StateMachine.from_character(Character('x'))
+        m2 = StateMachine.from_character(Character('y'))
+        m3 = StateMachine.from_character(Character('z'))
+        m = m1 + m2 + m3
+
+        self.assertEqual(list(m.complete('x')), [])

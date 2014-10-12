@@ -10,13 +10,14 @@ class StateMachine(object):
     """
     `StateMachine`: Nondeterministic finite automaton.
 
-    Actually, this is also the start state itself of the state machine.
+    Actually, an instance of this class is also the start state itself of a
+    state machine.
     """
-    def __init__(self, transations=None, accept=True):
-        self.transitions = transations or []  # (Character, State) tuples. We can have multiple transitions for one character.
+    def __init__(self, transitions=None, accept=True):
+        self.transitions = transitions or []  # (Character, State) tuples. We can have multiple transitions for one character.
         self.accept = accept
-        self.autocompleter = None
-        self.placeholder = None
+        #self.autocompleter = None
+        #self.placeholder = None
 
     def get_accepting_states(self):
         result = []
@@ -29,23 +30,28 @@ class StateMachine(object):
 
         return result
 
-    def copy(self):
+    @classmethod
+    def from_character(cls, character):
         """
-        Create deep copy of state machine.
+        Create a ``StateMachine`` with two nodes. The character is the
+        transition/edge between them.
         """
+        s = cls(accept=True)
+        return cls(transitions=[(character, s)], accept=False)
 
-    def __add_(self, other):
+    def __add__(self, other):
         # Create a new state machine for which other is appended to the
         # 'Accepting' states of the machine that we currently have.
         # `accept` becomes false for the machine that we have.
-        self2 = self.copy()
-        other2 = other.copy() # XXX: I don't think we need to copy this one.
 
-        for s in self2.accepting_states:
-            s.transitions.append((None, other2))
-            s.accept = False
+        transitions = []
+        for char, s in self.transitions:
+            transitions.append((char, s + other))
 
-        return StateMachine(transitions=[(None, self2)])
+        if self.accept:
+            transitions.append((None, other))
+
+        return StateMachine(transitions=transitions, accept=False)
 
     def __or__(self, other):
         """
@@ -61,36 +67,44 @@ class StateMachine(object):
             first_char, rest = inputstring[0], inputstring[1:]
 
             for char, state in self.transitions:
-                if char == first_char:
+                if char is None:
+                    for m in state.match(inputstring):
+                        yield m
+
+                elif first_char in char.characters:
                     # It's non deterministic. So several paths could lead to
                     # matches.
                     for m in state.match(rest):
                         yield m
 
         elif not inputstring and self.accept:
-            yield MATCH
-
+            yield 'MATCH'
 
     def complete(self, inputstring):
         if inputstring:
             first_char, rest = inputstring[0], inputstring[1:]
 
             for char, state in self.transitions:
-                if char == first_char:
+                if char is None:
+                    for completion in state.complete(inputstring):
+                        yield completion
+                elif first_char in char.characters:
                     for completion in state.complete(rest):
                         yield completion
 
         if not inputstring:
             for char, state in self.transitions:
-                for completion in state.complete(rest):
-                    yield Completion(char + completion.suffix)
+                for completion in state.complete(''):
+                    yield (char.characters if char else '') + completion # XXX
 
 
         if self.accept:
             # Accepting state. Yield empty completion.
-            yield Completion()
+            yield ''
 
 
+class Completion(object):
+    pass
 
 class Repeat(StateMachine):
     def __init__(self, sub_state_machine):
@@ -115,11 +129,15 @@ class Label(object):
         return not bool(self.next_state)
 
     def __add__(self, other):
-        return Label(
-            sub_state_machine=self.sub_state_machine,
-            name=self.name,
-            description=self.description,
-            next_state=other)
+        if self.next_state:
+            # TODO
+            pass
+        else:
+            return Label(
+                sub_state_machine=self.sub_state_machine,
+                name=self.name,
+                description=self.description,
+                next_state=other)
 
     def __or__(self, other):
         pass

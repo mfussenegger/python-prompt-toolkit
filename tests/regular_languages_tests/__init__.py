@@ -65,4 +65,4 @@ class RegularLanguagesTest(unittest.TestCase):
         m3 = StateMachine.from_character(Character('z'))
         m = m1 + m2 + m3
 
-        self.assertEqual(list(m.complete('x')), [])
+        self.assertEqual(list(m.complete('x')), ['yz'])

@@ -118,6 +118,7 @@ class StateMachine(object):
 class Completion(object):
     pass
 
+
 class Repeat(StateMachine):
     def __init__(self, sub_state_machine):
         self.sub_state_machine = sub_state_machine
@@ -125,9 +126,19 @@ class Repeat(StateMachine):
     def copy(self):
         pass
 
-    @classmethod
-    def create(cls, sub_state_machine):
+    def match(self, inputstring):
+        for m in self.sub_state_machine.match(inputstring):
+            if m.remainder:
+                # When there is a remainder, try both a repeat and return.
+                for sub_match in self.match(m.remainder):
+                    yield sub_match
+                yield m
+            else:
+                yield m
+
+    def complete(self, inputstring):
         pass
+
 
 class Label(object):
     """
@@ -180,3 +191,27 @@ non_space_characters = ~ Character(characters=' \t')
 
 
 
+"""
+
+
+Repeat(Literal('abcde') + Character('a-z')) | Label(Repeat(Literal('x')), name='labelname')
+
+
+
+re.compile('(abcde[a-z]|(?P<labelname>x*))')
+
+re.compile('(?P<literal1>(a|ab|abc|abcd|abcde))|
+
+
+DISALLOW TWO LEVELS OF GREEDY MATCHING, eg::
+(Terribly slow...)
+
+    import re
+    re.search("(a+)+b", "aaaaaaaaaaaaaaaa")
+
+
+
+r = 'ab(c|d)ef"(?P<param>[^"]*)test
+completers = { 'param': my_completer }
+
+"""

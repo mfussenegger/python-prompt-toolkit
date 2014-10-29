@@ -33,12 +33,12 @@ class Sequence(Node):
         return 'Sequence(len=%r)' % len(self.children)
 
 
-class Literal(Node):
-    def __init__(self, text):
-        self.text = text
-
-    def __repr__(self):
-        return 'Character(%r)' % (self.text, )
+def Literal(text):
+    """
+    List of characters.
+    """
+    characters = [Character('[%s]' % re.escape(c)) for c in text]
+    return Sequence(characters)
 
 
 class Character(Node):
@@ -94,62 +94,42 @@ class _RegexTransformer(object):
     Transform nodes to a Python regex.
     """
     def __init__(self, root_node):
-        self.variables = {}  # Mapping from 'varname' -> Variable instance
-        self.nodes_to_numbers, self.nodelist = self._number_nodes(root_node)
-        self.group_names_to_nodes = { }
-        self._counter = 0
+        self._group_names_to_nodes = { }
+        self._prefix_group_names_to_nodes = { }
 
-        self.re_text = '^%s$' % self._transform(root_node, self.nodes_to_numbers)
+        def create_groupname_creator(dictionary):
+            counter = [0]
+
+            def create_group_func(node):
+                name = 'n%s' % counter[0]
+                dictionary[counter[0]] = node
+                counter[0] += 1
+                return name
+            return create_group_func
+
+        self.re_text = '^%s$' % self._transform(
+            root_node, create_groupname_creator(self._group_names_to_nodes))
+
+        self.re_prefix_text = self._transform_prefix(
+            root_node,create_groupname_creator(self._prefix_group_names_to_nodes))
+
         self._re = re.compile(self.re_text)
-
-        self.re_prefix_text = self._transform_prefix(root_node, self.nodes_to_numbers)
-        print(self.re_prefix_text)
         self._re_prefix = re.compile(self.re_prefix_text)
 
     @classmethod
-    def _number_nodes(cls, root_node):
-        counter = [0]
-        nodes_to_numbers = {}
-        nodelist = []
-
-        def traverse(node):
-            c = counter[0] = counter[0] + 1
-
-            nodes_to_numbers[node] = c
-            nodelist.append(node)
-
-            if isinstance(node, (Variable, Repeat)):
-                traverse(node.childnode)
-            elif isinstance(node, (Sequence, Any)):
-                for child in node.children:
-                    traverse(child)
-
-        traverse(root_node)
-
-        return nodes_to_numbers, nodelist
-
-    def _transform(self, root_node, nodes_to_numbers):
+    def _transform(cls, root_node, create_group_func):
         def transform(node):
-            self._counter += 1
-            name = 'node_%s' % self._counter
-            self.group_names_to_nodes[name] = node
-            return '(?P<%s>%s)' % (name, _transform_2(node))
-
-        def _transform_2(node):
             if isinstance(node, Any):
                 return '(?:%s)' % '|'.join(transform(c) for c in node.children)
 
             elif isinstance(node, Sequence):
                 return ''.join(transform(c) for c in node.children)
 
-            elif isinstance(node, Literal):
-                return re.escape(node.text)
-
             elif isinstance(node, Character):
                 return '%s' % node.data
 
             elif isinstance(node, Variable):
-                return '%s' % transform(node.childnode)
+                return '(?P<%s>%s)' % (create_group_func(node), transform(node.childnode))
 
             elif isinstance(node, Repeat):
                 return '(?:%s)*' % transform(node.childnode)
@@ -159,38 +139,27 @@ class _RegexTransformer(object):
 
         return transform(root_node)
 
-    def _transform_prefix(self, root_node, nodes_to_numbers):
+    @classmethod
+    def _transform_prefix(cls, root_node, create_group_func):
         def transform(node):
-            self._counter += 1
-            name = 'node_%s' % self._counter
-            self.group_names_to_nodes[name] = node
-            return '(?P<%s>%s)' % (name, transform_2(node))
-
-        def transform_2(node):
             if isinstance(node, Any):
                 return '(?:%s)?' % '|'.join(transform(c) for c in node.children)
 
             elif isinstance(node, Sequence):
-                prefix_children = [transform(c) for c in node.children]
-                complete_children = [self._transform(c, nodes_to_numbers) for c in node.children]
                 result = []
 
                 for i in range(len(node.children)):
-                    result.append(''.join(complete_children[:i] + prefix_children[i:i+1]))
+                    a = [cls._transform(c, create_group_func) for c in node.children[:i]]
+                    a.append(transform(node.children[i]))
+                    result.append(''.join(a))
+
                 return '(?:%s)' % '|'.join(result)
-
-                #count = len(children)
-                #return '(?:%s' % '(?:'.join(''.join(children[i]) for i in range(count)) + ')?' * count
-
-            elif isinstance(node, Literal):
-                count = len(node.text)
-                return '(?:%s' % '('.join(re.escape(node.text[i]) for i in range(count)) + ')?' * count
 
             elif isinstance(node, Character):
                 return '(?:%s)?' % node.data
 
             elif isinstance(node, Variable):
-                return '(?:%s)?' % transform(node.childnode)
+                return '(?P<%s>%s)?' % (create_group_func(node), transform(node.childnode))
 
             elif isinstance(node, Repeat):
                 return '(?:%s)*' % transform(node.childnode)
@@ -200,12 +169,12 @@ class _RegexTransformer(object):
     def match(self, inputstring):
         m = self._re.match(inputstring)
         if m:
-            return Match(self, self._re, m)
+            return Match(self, self._re, m, self._group_names_to_nodes)
 
     def match_prefix(self, inputstring):
         m = self._re_prefix.match(inputstring)
         if m:
-            return Match(self, self._re_prefix, m)
+            return Match(self, self._re_prefix, m, self._prefix_group_names_to_nodes)
 
 
 def compile(root_node):
@@ -213,31 +182,48 @@ def compile(root_node):
 
 
 class Match(object):
-    def __init__(self, transformer, re_pattern, re_match):
+    def __init__(self, transformer, re_pattern, re_match, group_names_to_nodes):
         self.transformer = transformer
         self.re_pattern = re_pattern
         self.re_match = re_match
+        self.group_names_to_nodes = group_names_to_nodes
 
-    def variables(self):
+    def nodes(self):
+        return {int(k[len('n'):]):v for k, v in self.re_match.groupdict().items() if k.startswith('n') }
+
+    def nodes_to_regs(self):
+        """
+        Return { Node -> reg_index } mappings.
+        """
+        result = {}
+                # TODO: maybe use the self.re_pattern.groupindex {name->regs_index}
+        regs = self.re_match.regs[1:]
+
+        for i, r in enumerate(regs):
+            node = self.group_names_to_nodes[i]
+
+            if node not in result:
+                result[node] = r
+
+        return result
+
+    def nodes_to_values(self):
+        """
+        Returns { Node -> string_value } mapping.
+        """
         def get(slice):
             if slice[0] == -1 and slice[1] == -1:
                 return None
             else:
                 return self.re_match.string[slice[0]:slice[1]]
 
-        return { node.varname: get(slice) for node, slice in
-            self.nodes_and_parts() if isinstance(node, Variable) }
+        return {node: get(slice) for node, slice in self.nodes_to_regs().items()}
 
-        return {k[len('var_'):]:v for k, v in self.re_match.groupdict().items() if k.startswith('var_') }
-
-    def nodes(self):
-        return {int(k[len('node_'):]):v for k, v in self.re_match.groupdict().items() if k.startswith('node_') }
-
-    def nodes_and_parts(self):  # DEBUG
-
-                # TODO: use the self.re_pattern.groupindex {name->regs_index}
-        regs = self.re_match.regs[1:]
-        return [(node,r) for node, r in zip(self.transformer.nodelist, regs)]
+    def variables(self):
+        """
+        Returns { varname -> value } mapping.
+        """
+        return { k.varname: k.unwrap(v) for k, v in self.nodes_to_values().items() if isinstance(k, Variable) }
 
     def complete(self):
         raise NotImplementedError

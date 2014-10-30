@@ -217,13 +217,13 @@ class Match(object):
             else:
                 return self.re_match.string[slice[0]:slice[1]]
 
-        return {node: get(slice) for node, slice in self.nodes_to_regs().items()}
+        return dict((node, get(slice)) for node, slice in self.nodes_to_regs().items())
 
     def variables(self):
         """
         Returns { varname -> value } mapping.
         """
-        return { k.varname: k.unwrap(v) for k, v in self.nodes_to_values().items() if isinstance(k, Variable) }
+        return dict((k.varname, k.unwrap(v)) for k, v in self.nodes_to_values().items() if isinstance(k, Variable))
 
     def complete(self):
         raise NotImplementedError

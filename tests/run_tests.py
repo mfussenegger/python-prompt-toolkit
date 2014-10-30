@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+from __future__ import unicode_literals
+
 from line_tests import *
 from document_tests import *
 from inputstream_tests import *

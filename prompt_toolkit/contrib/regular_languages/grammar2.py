@@ -189,7 +189,7 @@ class Match(object):
         self.group_names_to_nodes = group_names_to_nodes
 
     def nodes(self):
-        return {int(k[len('n'):]):v for k, v in self.re_match.groupdict().items() if k.startswith('n') }
+        return dict((int(k[len('n'):]), v) for k, v in self.re_match.groupdict().items() if k.startswith('n'))
 
     def nodes_to_regs(self):
         """

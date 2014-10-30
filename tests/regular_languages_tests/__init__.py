@@ -4,10 +4,6 @@ from prompt_toolkit.contrib.regular_languages.grammar2 import Literal, Variable,
 
 import unittest
 
-__all__ = (
-    'GrammarTest',
-)
-
 
 class GrammarTest(unittest.TestCase):
     def test_simple_match(self):

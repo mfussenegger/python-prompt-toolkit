@@ -103,3 +103,22 @@ class GrammarTest(unittest.TestCase):
         self.assertIsInstance(m, Match)
         self.assertEqual(m.variables(), {'var1': '"ab'})
 
+    def test_complter(self):
+        def completer1(text):
+            return 'before-%s-after' % text
+
+        def completer2(text):
+            return 'before2-%s-after2' % text
+
+        v1 = Variable(Repeat(Character('[a-z]')), varname='var1', completer=completer1)
+        v2 = Variable(Repeat(Character('[a-z]')), varname='var2', completer=completer2)
+        grammar = v1 + Repeat(Character('[\\s]')) + v2
+        t = compile(grammar)
+
+        m = t.match_prefix('abc')
+        self.assertEqual(m.last_node_pos(), (v1, 0, 3))
+
+        m = t.match_prefix('abc def')
+        self.assertEqual(m.last_node_pos(), (v2, 4, 7))
+
+        print(m.complete())

@@ -1,5 +1,6 @@
 import re
 
+from collections import namedtuple
 
 
 
@@ -60,9 +61,9 @@ class Variable(Node):
 
         self.childnode = childnode
         self.varname = varname
-        self.compler = completer
-        self.wrapper = wrapper
-        self.unwrapper = unwrapper
+        self.completer = completer
+        self.wrapper = wrapper or (lambda text: text)
+        self.unwrapper = unwrapper or (lambda text: text)
         self.token = token
 
     def __repr__(self):
@@ -181,6 +182,9 @@ def compile(root_node):
     return _RegexTransformer(root_node)
 
 
+NodePos = namedtuple('NodePos', 'node start stop')
+
+
 class Match(object):
     def __init__(self, transformer, re_pattern, re_match, group_names_to_nodes):
         self.transformer = transformer
@@ -207,6 +211,27 @@ class Match(object):
 
         return result
 
+    def last_node_pos(self, with_completer=False):
+        """
+        Return (Node, start, stop).
+        """
+        node_result = None
+        start, stop = None, None
+        #print(self.nodes_to_regs())
+        #print(self.re_match.regs)
+
+        for node, reg in self.nodes_to_regs().items():
+            # If this part goes until the end of the input string.
+            if reg[1] == len(self.re_match.string):
+                if not node_result or start < reg[0]:
+                    if not with_completer or isinstance(node, Variable) and node.completer:
+                        node_result = node
+                        start = reg[0]
+                        stop = reg[1]
+
+        if node_result:
+            return NodePos(node_result, start, stop)
+
     def nodes_to_values(self):
         """
         Returns { Node -> string_value } mapping.
@@ -226,4 +251,20 @@ class Match(object):
         return dict((k.varname, k.unwrap(v)) for k, v in self.nodes_to_values().items() if isinstance(k, Variable))
 
     def complete(self):
-        raise NotImplementedError
+        last_node_pos = self.last_node_pos(with_completer=True)
+
+        if last_node_pos:
+            node = last_node_pos.node
+            completer = node.completer
+            text = self.re_match.string[last_node_pos.start:last_node_pos.stop]
+
+            # Decode text.
+            unwrapped_text = node.unwrapper(text)
+
+            # Call completer
+            completed_text = completer(unwrapped_text)
+
+            # Wrap again.
+            wrapped_completion = node.wrapper(completed_text)
+
+            return (wrapped_completion, last_node_pos.start)
